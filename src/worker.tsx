@@ -1,0 +1,73 @@
+import { defineApp, ErrorResponse } from "rwsdk/worker";
+import { route, render, prefix } from "rwsdk/router";
+import { Document } from "@/app/Document";
+import { Home } from "@/app/pages/Home";
+import { setCommonHeaders } from "@/app/headers";
+import { userRoutes } from "@/app/pages/user/routes";
+import { sessions, setupSessionStore } from "./session/store";
+import { Session } from "./session/durableObject";
+import { type User, db, setupDb } from "@/db";
+import { env } from "cloudflare:workers";
+import { routeAgentRequest } from "agents";
+export { SessionDurableObject } from "./session/durableObject";
+export { AgentObject } from "./agent";
+
+export type AppContext = {
+  session: Session | null;
+  user: User | null;
+};
+
+export default defineApp([
+  setCommonHeaders(),
+  async ({ ctx, request, headers }) => {
+    await setupDb(env);
+    setupSessionStore(env);
+
+    try {
+      ctx.session = await sessions.load(request);
+    } catch (error) {
+      if (error instanceof ErrorResponse && error.code === 401) {
+        await sessions.remove(request, headers);
+        headers.set("Location", "/user/login");
+
+        return new Response(null, {
+          status: 302,
+          headers,
+        });
+      }
+
+      throw error;
+    }
+
+    if (ctx.session?.userId) {
+      ctx.user = await db.user.findUnique({
+        where: {
+          id: ctx.session.userId,
+        },
+      });
+    }
+  },
+  // Handle agent routing for /agents/* requests
+  async ({ request }) => {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith('/agents/')) {
+      return await routeAgentRequest(request, env) ||
+             new Response("Agent not found", { status: 404 });
+    }
+  },
+  render(Document, [
+    route("/", Home),
+    route("/protected", [
+      ({ ctx }) => {
+        if (!ctx.user) {
+          return new Response(null, {
+            status: 302,
+            headers: { Location: "/user/login" },
+          });
+        }
+      },
+      Home,
+    ]),
+    prefix("/user", userRoutes),
+  ]),
+]);
