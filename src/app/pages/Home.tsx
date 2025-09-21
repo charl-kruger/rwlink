@@ -19,7 +19,7 @@ export function Home({ ctx }: RequestInfo) {
     console.log("agentConnection.call:", agentConnection?.call);
     console.log("agentConnection.stub:", agentConnection?.stub);
 
-    if (!agentConnection?.call || agentConnection?.readyState !== 1) {
+    if (!agentConnection?.call) {
       setResponse("Agent connection not available");
       return;
     }
@@ -49,15 +49,15 @@ export function Home({ ctx }: RequestInfo) {
         <h3>Ping/Pong Test</h3>
         <button
           onClick={handlePing}
-          disabled={isLoading || agentConnection?.readyState !== 1}
+          disabled={isLoading || !agentConnection || !agentConnection.call}
           style={{
             padding: "10px 20px",
             backgroundColor: "#007bff",
             color: "white",
             border: "none",
             borderRadius: "4px",
-            cursor: isLoading || agentConnection?.readyState !== 1 ? "not-allowed" : "pointer",
-            opacity: isLoading || agentConnection?.readyState !== 1 ? 0.6 : 1
+            cursor: isLoading || !agentConnection || !agentConnection.call ? "not-allowed" : "pointer",
+            opacity: isLoading || !agentConnection || !agentConnection.call ? 0.6 : 1
           }}
         >
           {isLoading ? "Pinging..." : "Ping"}
@@ -76,7 +76,7 @@ export function Home({ ctx }: RequestInfo) {
         )}
 
         <div style={{ marginTop: "10px", fontSize: "14px", color: "#6c757d" }}>
-          Agent connection status: {agentConnection?.readyState === 1 ? "Connected" : "Disconnected"}
+          Agent connection status: {agentConnection && agentConnection.call ? "Connected" : "Disconnected"}
         </div>
       </div>
     </div>
