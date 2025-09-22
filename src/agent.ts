@@ -1,4 +1,10 @@
-import { Agent, callable, Connection } from "agents";
+import "reflect-metadata";
+import { Actor } from "@cloudflare/actors";
+import { callable, dispatchRpcCall } from "@/lib/callable";
+
+interface Env {
+  // Add any environment bindings here
+}
 
 interface AgentState {
   counter: number;
@@ -6,88 +12,83 @@ interface AgentState {
   lastUpdated: Date | null;
 }
 
-export class AgentObject extends Agent<any, AgentState> {
-  // Optional initial state definition
-  initialState: AgentState = {
+export class AgentObject extends Actor<Env> {
+  private state: AgentState = {
     counter: 0,
     messages: [],
     lastUpdated: null,
   };
 
-  // Called when a new Agent instance starts or wakes from hibernation
-  async onStart() {
-    console.log("Agent started with state:", this.state);
-  }
-
-  // Handle HTTP requests coming to this Agent instance
-  // Returns a Response object
-  async onRequest(request: Request): Promise<Response> {
+  async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/ping" && request.method === "POST") {
-      const result = await this.ping();
-      return new Response(result, {
-        headers: { "Content-Type": "text/plain" },
-      });
+    // Handle RPC calls with automatic method dispatch
+    if (url.pathname.endsWith("/rpc") && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const { method, params = [] } = body;
+
+        // Use automatic method dispatch
+        const result = await dispatchRpcCall(this, method, params);
+
+        return new Response(JSON.stringify({ result }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
 
-    return new Response("Hello from Agent!");
+    return new Response("Hello from Actor!");
   }
 
-  // Called when a WebSocket connection is established
-  // Access the original request via ctx.request for auth etc.
-  async onConnect(connection: Connection, ctx: { request: Request }): Promise<void> {
-    // Connections are automatically accepted by the SDK.
-    // You can also explicitly close a connection here with connection.close()
-    // Access the Request on ctx.request to inspect headers, cookies and the URL
-  }
-
-  // Called for each message received on a WebSocket connection
-  // Message can be string, ArrayBuffer, or ArrayBufferView
-  async onMessage(connection: Connection, message: string | ArrayBuffer | ArrayBufferView): Promise<void> {
-    // Handle incoming messages
-    connection.send("Received your message");
-  }
-
-  // Handle WebSocket connection errors
-  async onError(connection: Connection, error: unknown): Promise<void>;
-  async onError(error: unknown): Promise<void>;
-  async onError(connectionOrError: Connection | unknown, error?: unknown): Promise<void> {
-    if (error !== undefined) {
-      // Called with connection and error
-      console.error(`Connection error:`, error);
-    } else {
-      // Called with error only
-      console.error(`General error:`, connectionOrError);
-    }
-  }
-
-  // Handle WebSocket connection close events
-  async onClose(connection: Connection, code: number, reason: string, wasClean: boolean): Promise<void> {
-    console.log(`Connection closed: ${code} - ${reason}`);
-  }
-
-  // Called when the Agent's state is updated from any source
-  // source can be "server" or a client Connection
-  onStateUpdate(state: AgentState | undefined, source: Connection | "server"): void {
-    console.log("State updated:", state, "Source:", source);
-  }
-
-  // You can define your own custom methods to be called by requests,
-  // WebSocket messages, or scheduled tasks
-  async customProcessingMethod(data: unknown): Promise<void> {
-    // Process data, update state, schedule tasks, etc.
-    this.setState({
-      counter: this.state.counter,
-      messages: this.state.messages,
-      lastUpdated: new Date()
-    });
-  }
-
-  // Ping method that returns "pong" - decorated to be callable from client
   @callable()
-  async ping(): Promise<string> {
-    console.log("Ping received, responding with pong");
+  async ping(timezone?: string): Promise<string> {
+    console.log("Ping received, responding with pong", timezone ? `for timezone: ${timezone}` : "");
+
+    // Update state
+    this.state = {
+      ...this.state,
+      counter: this.state.counter + 1,
+      lastUpdated: new Date(),
+      messages: [...this.state.messages, `ping ${timezone || 'default'} at ${new Date().toISOString()}`].slice(-10) // Keep last 10 messages
+    };
+
+    await this.storage.raw?.put("state", this.state);
+
+    if (timezone) {
+      const now = new Date();
+      return `pong from ${timezone} at ${now.toLocaleString('en-US', { timeZone: timezone })}`;
+    }
+
     return "pong";
+  }
+
+  @callable()
+  async getState(): Promise<AgentState> {
+    const stored = await this.storage.raw?.get<AgentState>("state");
+    return stored || this.state;
+  }
+
+  @callable()
+  async addMessage(message: string): Promise<string> {
+    console.log("Adding message:", message);
+
+    this.state = {
+      ...this.state,
+      messages: [...this.state.messages, `${message} at ${new Date().toISOString()}`].slice(-10)
+    };
+
+    await this.storage.raw?.put("state", this.state);
+    return `Message "${message}" added successfully`;
+  }
+
+  // This method is NOT marked with @callable - should not be accessible via RPC
+  async dangerousMethod(): Promise<string> {
+    console.log("This should not be callable from RPC!");
+    return "This method should not be accessible";
   }
 }

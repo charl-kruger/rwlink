@@ -38,6 +38,10 @@
     "allowSyntheticDefaultImports": true,
     /* Ensure that casing is correct in imports. */
     "forceConsistentCasingInFileNames": true,
+    /* Enable experimental support for decorators */
+    "experimentalDecorators": true,
+    /* Emit decorator metadata */
+    "emitDecoratorMetadata": true,
 
     /* Enable all strict type-checking options. */
     "strict": true,

@@ -27,11 +27,12 @@
     "prepare": "vibe-rules install cursor"
   },
   "dependencies": {
+    "@cloudflare/actors": "0.0.1-beta.6",
     "@prisma/adapter-d1": "~6.8.2",
     "@prisma/client": "~6.8.2",
     "@simplewebauthn/browser": "^13.1.0",
     "@simplewebauthn/server": "^13.1.1",
-    "agents": "^0.1.4",
+    "reflect-metadata": "^0.2.2",
     "rwsdk": "0.3.11"
   },
   "devDependencies": {

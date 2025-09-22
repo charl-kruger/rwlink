@@ -8,7 +8,7 @@ import { sessions, setupSessionStore } from "./session/store";
 import { Session } from "./session/durableObject";
 import { type User, db, setupDb } from "@/db";
 import { env } from "cloudflare:workers";
-import { routeAgentRequest } from "agents";
+import { AgentObject } from "./agent";
 export { SessionDurableObject } from "./session/durableObject";
 export { AgentObject } from "./agent";
 
@@ -47,12 +47,24 @@ export default defineApp([
       });
     }
   },
-  // Handle agent routing for /agents/* requests
-  async ({ request }) => {
+  // Handle actor routing for /actors/* requests
+  async ({ request, ctx }) => {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/agents/')) {
-      return await routeAgentRequest(request, env) ||
-             new Response("Agent not found", { status: 404 });
+    if (url.pathname.startsWith('/actors/')) {
+      // Extract actor name and ID from URL path
+      const pathParts = url.pathname.split('/');
+      if (pathParts.length >= 4) {
+        const actorName = pathParts[2];
+        const actorId = pathParts[3];
+
+        if (actorName === 'agent-object') {
+          // Get the Durable Object stub using the binding from wrangler.jsonc
+          const durableObjectId = env.AgentObject.idFromName(actorId);
+          const actorStub = env.AgentObject.get(durableObjectId);
+          return await actorStub.fetch(request);
+        }
+      }
+      return new Response("Actor not found", { status: 404 });
     }
   },
   render(Document, [
